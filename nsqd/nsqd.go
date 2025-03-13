@@ -77,6 +77,7 @@ type NSQD struct {
 func New(opts *Options) (*NSQD, error) {
 	var err error
 
+	// diskqueue 数据存储路径
 	dataPath := opts.DataPath
 	if opts.DataPath == "" {
 		cwd, _ := os.Getwd()
@@ -88,34 +89,42 @@ func New(opts *Options) (*NSQD, error) {
 
 	n := &NSQD{
 		startTime:            time.Now(),
-		topicMap:             make(map[string]*Topic),
+		topicMap:             make(map[string]*Topic), // topic存储map
 		exitChan:             make(chan int),
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
-		dl:                   dirlock.New(dataPath),
+		dl:                   dirlock.New(dataPath), // windows上就是独占目录, linux上是对目录/文件加锁
 	}
+	// 创建context
 	n.ctx, n.ctxCancel = context.WithCancel(context.Background())
+	// 创建http client, 指定了连接超时和请求超时时间
 	httpcli := http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)
 	n.ci = clusterinfo.New(n.logf, httpcli)
 
+	// 村粗nsqdlookupd信息
 	n.lookupPeers.Store([]*lookupPeer{})
 
+	// 将opts信息存储到atomic.value中, 这样方便原子操作
 	n.swapOpts(opts)
 	n.errValue.Store(errStore{})
 
+	// 对目录加锁, 这里主要是独占目录, 防止别的程序修改
 	err = n.dl.Lock()
 	if err != nil {
 		return nil, fmt.Errorf("failed to lock data-path: %v", err)
 	}
 
+	// 参数合法性校验
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
 		return nil, errors.New("--max-deflate-level must be [1,9]")
 	}
 
+	// 参数合法性校验
 	if opts.ID < 0 || opts.ID >= 1024 {
 		return nil, errors.New("--node-id must be [0,1024)")
 	}
 
+	// TLS
 	if opts.TLSClientAuthPolicy != "" && opts.TLSRequired == TLSNotRequired {
 		opts.TLSRequired = TLSRequired
 	}
@@ -148,12 +157,15 @@ func New(opts *Options) (*NSQD, error) {
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
+	// 创建 tcpServer
 	n.tcpServer = &tcpServer{nsqd: n}
+	// tcp listener
 	n.tcpListener, err = net.Listen(util.TypeOfAddr(opts.TCPAddress), opts.TCPAddress)
 	if err != nil {
 		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
 	}
 	if opts.HTTPAddress != "" {
+		// 创建 httpListener
 		n.httpListener, err = net.Listen(util.TypeOfAddr(opts.HTTPAddress), opts.HTTPAddress)
 		if err != nil {
 			return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPAddress, err)
