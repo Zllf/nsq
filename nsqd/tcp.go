@@ -26,10 +26,11 @@ type tcpServer struct {
 func (p *tcpServer) Handle(conn net.Conn) {
 	p.nsqd.logf(LOG_INFO, "TCP: new client(%s)", conn.RemoteAddr())
 
-	// The client should initialize itself by sending a 4 byte sequence indicating
+	// The client should initialize itself by sending a 4 byte sequence indicating+
 	// the version of the protocol that it intends to communicate, this will allow us
 	// to gracefully upgrade the protocol away from text/line oriented to whatever...
 	buf := make([]byte, 4)
+	// 读满4字节, 否则一直阻塞
 	_, err := io.ReadFull(conn, buf)
 	if err != nil {
 		p.nsqd.logf(LOG_ERROR, "failed to read protocol version - %s", err)
@@ -41,6 +42,7 @@ func (p *tcpServer) Handle(conn net.Conn) {
 	p.nsqd.logf(LOG_INFO, "CLIENT(%s): desired protocol magic '%s'",
 		conn.RemoteAddr(), protocolMagic)
 
+	// 版本校验, 错误会返回错并且关闭连接
 	var prot protocol.Protocol
 	switch protocolMagic {
 	case "  V2":
@@ -52,7 +54,7 @@ func (p *tcpServer) Handle(conn net.Conn) {
 			conn.RemoteAddr(), protocolMagic)
 		return
 	}
-
+	// 对新建立的连接conn 创建一个 client
 	client := prot.NewClient(conn)
 	p.conns.Store(conn.RemoteAddr(), client)
 
