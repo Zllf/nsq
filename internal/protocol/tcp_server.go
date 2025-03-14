@@ -20,6 +20,7 @@ func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) er
 	var wg sync.WaitGroup
 
 	for {
+		// 等待客户端的连接
 		clientConn, err := listener.Accept()
 		if err != nil {
 			// net.Error.Temporary() is deprecated, but is valid for accept
@@ -38,6 +39,7 @@ func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) er
 
 		wg.Add(1)
 		go func() {
+			// 连接处理函数
 			handler.Handle(clientConn)
 			wg.Done()
 		}()

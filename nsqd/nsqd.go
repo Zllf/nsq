@@ -278,15 +278,19 @@ func (n *NSQD) Main() error {
 		})
 	}
 
+	// 开启 tcp server
 	n.waitGroup.Wrap(func() {
+		// 里面是循环处理客户端的连接 阻塞
 		exitFunc(protocol.TCPServer(n.tcpListener, n.tcpServer, n.logf))
 	})
+	// 开启 http server
 	if n.httpListener != nil {
 		httpServer := newHTTPServer(n, false, n.getOpts().TLSRequired == TLSRequired)
 		n.waitGroup.Wrap(func() {
 			exitFunc(http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf))
 		})
 	}
+	// 开启 https server
 	if n.httpsListener != nil {
 		httpsServer := newHTTPServer(n, true, true)
 		n.waitGroup.Wrap(func() {
@@ -294,12 +298,15 @@ func (n *NSQD) Main() error {
 		})
 	}
 
+	// 维护 channel中的队列和等待消息确认队列
 	n.waitGroup.Wrap(n.queueScanLoop)
+	// 连接到nsqlookupd
 	n.waitGroup.Wrap(n.lookupLoop)
 	if n.getOpts().StatsdAddress != "" {
 		n.waitGroup.Wrap(n.statsdLoop)
 	}
 
+	// 一直阻塞, 直到有数据
 	err := <-exitCh
 	return err
 }

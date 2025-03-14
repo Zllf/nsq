@@ -72,10 +72,12 @@ func (p *program) Init(env svc.Environment) error {
 }
 
 func (p *program) Start() error {
+	// 加载元数据
 	err := p.nsqd.LoadMetadata()
 	if err != nil {
 		logFatal("failed to load metadata - %s", err)
 	}
+	// 持久化元数据
 	err = p.nsqd.PersistMetadata()
 	if err != nil {
 		logFatal("failed to persist metadata - %s", err)
